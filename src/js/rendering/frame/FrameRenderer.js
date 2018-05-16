@@ -55,7 +55,8 @@
     this.displayCanvas = null;
     this.setDisplaySize(renderingOptions.width, renderingOptions.height);
 
-    this.setGridWidth(pskl.UserSettings.get(pskl.UserSettings.GRID_WIDTH));
+    this.setGridWidth(this.getUserGridWidth_());
+    this.setGridSpacing(this.getUserGridSpacing_());
 
     $.subscribe(Events.USER_SETTINGS_CHANGED, this.onUserSettingsChange_.bind(this));
   };
@@ -106,7 +107,7 @@
     this.displayWidth = width;
     this.displayHeight = height;
     if (this.displayCanvas) {
-      $(this.displayCanvas).remove();
+      this.displayCanvas.parentNode.removeChild(this.displayCanvas);
       this.displayCanvas = null;
     }
     this.createDisplayCanvas_();
@@ -138,8 +139,16 @@
     this.offset.y = y;
   };
 
+  ns.FrameRenderer.prototype.getGridColor = function () {
+    return pskl.UserSettings.get(pskl.UserSettings.GRID_COLOR);
+  };
+
   ns.FrameRenderer.prototype.setGridWidth = function (value) {
     this.gridWidth_ = value;
+  };
+
+  ns.FrameRenderer.prototype.setGridSpacing = function (value) {
+    this.gridSpacing_ = value;
   };
 
   ns.FrameRenderer.prototype.getGridWidth = function () {
@@ -150,15 +159,29 @@
     return this.gridWidth_;
   };
 
+  ns.FrameRenderer.prototype.getGridSpacing = function () {
+    if (!this.supportGridRendering) {
+      return 0;
+    }
+
+    return this.gridSpacing_;
+  };
+
   /**
    * Compute a grid width value best suited to the current display context,
    * particularly for the current zoom level
    */
   ns.FrameRenderer.prototype.computeGridWidthForDisplay_ = function () {
+    var gridSpacing = this.getGridSpacing();
+    if (this.zoom * gridSpacing < 6) {
+      return 0;
+    }
+
     var gridWidth = this.getGridWidth();
-    while (this.zoom < 6 * gridWidth) {
+    while (gridWidth > 1 && this.zoom < 6 * gridWidth) {
       gridWidth--;
     }
+
     return gridWidth;
   };
 
@@ -176,13 +199,29 @@
 
     this.displayCanvas = pskl.utils.CanvasUtils.createCanvas(width, height, this.classList);
     pskl.utils.CanvasUtils.disableImageSmoothing(this.displayCanvas);
-    this.container.append(this.displayCanvas);
+    this.container.appendChild(this.displayCanvas);
   };
 
   ns.FrameRenderer.prototype.onUserSettingsChange_ = function (evt, settingName, settingValue) {
-    if (settingName == pskl.UserSettings.GRID_WIDTH) {
-      this.setGridWidth(settingValue);
+    var settings = pskl.UserSettings;
+    if (settingName == settings.GRID_WIDTH ||
+        settingName == settings.GRID_SPACING ||
+        settingName == settings.GRID_ENABLED) {
+      this.setGridWidth(this.getUserGridWidth_());
+      this.setGridSpacing(this.getUserGridSpacing_());
     }
+  };
+
+  ns.FrameRenderer.prototype.getUserGridWidth_ = function () {
+    var gridEnabled = pskl.UserSettings.get(pskl.UserSettings.GRID_ENABLED);
+    var width = pskl.UserSettings.get(pskl.UserSettings.GRID_WIDTH);
+    return gridEnabled ? width : 0;
+  };
+
+  ns.FrameRenderer.prototype.getUserGridSpacing_ = function () {
+    var gridEnabled = pskl.UserSettings.get(pskl.UserSettings.GRID_ENABLED);
+    var spacing = pskl.UserSettings.get(pskl.UserSettings.GRID_SPACING);
+    return gridEnabled ? spacing : 0;
   };
 
   /**
@@ -191,9 +230,9 @@
    * @public
    */
   ns.FrameRenderer.prototype.getCoordinates = function(x, y) {
-    var containerOffset = this.container.offset();
-    x = x - containerOffset.left;
-    y = y - containerOffset.top;
+    var containerRect = this.container.getBoundingClientRect();
+    x = x - containerRect.left;
+    y = y - containerRect.top;
 
     // apply margins
     x = x - this.margin.x;
@@ -222,9 +261,9 @@
     x = x + this.margin.x;
     y = y + this.margin.y;
 
-    var containerOffset = this.container.offset();
-    x = x + containerOffset.left;
-    y = y + containerOffset.top;
+    var containerRect = this.container.getBoundingClientRect();
+    x = x + containerRect.left;
+    y = y + containerRect.top;
 
     return {
       x : x + (cellSize / 2),
@@ -252,36 +291,67 @@
     var displayContext = this.displayCanvas.getContext('2d');
     displayContext.save();
 
-    // Draw background
-    displayContext.fillStyle = Constants.ZOOMED_OUT_BACKGROUND_COLOR;
-    displayContext.fillRect(0, 0, this.displayCanvas.width - 1, this.displayCanvas.height - 1);
+    var translateX = this.margin.x - this.offset.x * z;
+    var translateY = this.margin.y - this.offset.y * z;
 
-    displayContext.translate(
-      this.margin.x - this.offset.x * z,
-      this.margin.y - this.offset.y * z
-    );
-
-    if (pskl.UserSettings.get('SEAMLESS_MODE')) {
-      displayContext.clearRect(-1 * w * z, -1 * h * z, 3 * w * z, 3 * h * z);
-    } else {
-      displayContext.clearRect(0, 0, w * z, h * z);
+    var isZoomedOut = translateX > 0 || translateY > 0;
+    // Draw the background / zoomed-out color only if needed. Otherwise the clearRect
+    // happening after that will clear "out of bounds" and seems to be doing nothing
+    // on some chromebooks (cf https://github.com/piskelapp/piskel/issues/651)
+    if (isZoomedOut) {
+      // Draw background
+      displayContext.fillStyle = Constants.ZOOMED_OUT_BACKGROUND_COLOR;
+      // The -1 on the width and height here is a workaround for a Chrome-only bug
+      // that was potentially fixed, but is very hardware dependant. Seems to be
+      // triggered when doing clear rect or fill rect using the full width & height
+      // of a canvas. (https://bugs.chromium.org/p/chromium/issues/detail?id=469906)
+      displayContext.fillRect(0, 0, this.displayCanvas.width - 1, this.displayCanvas.height - 1);
     }
 
-    var gridWidth = this.computeGridWidthForDisplay_();
-    if (gridWidth > 0) {
-      var scaled = pskl.utils.ImageResizer.resizeNearestNeighbour(this.canvas, z, gridWidth);
+    displayContext.translate(translateX, translateY);
 
-      if (pskl.UserSettings.get('SEAMLESS_MODE')) {
-        this.drawTiledFrames_(displayContext, scaled, w, h, z);
-      }
-      displayContext.drawImage(scaled, 0, 0);
+    // Scale up to draw the canvas content
+    displayContext.scale(z, z);
+
+    if (pskl.UserSettings.get('SEAMLESS_MODE')) {
+      displayContext.clearRect(-1 * w, -1 * h, 3 * w, 3 * h);
     } else {
-      displayContext.scale(z, z);
+      displayContext.clearRect(0, 0, w, h);
+    }
 
-      if (pskl.UserSettings.get('SEAMLESS_MODE')) {
-        this.drawTiledFrames_(displayContext, this.canvas, w, h, 1);
+    if (pskl.UserSettings.get('SEAMLESS_MODE')) {
+      this.drawTiledFrames_(displayContext, this.canvas, w, h, 1);
+    }
+    displayContext.drawImage(this.canvas, 0, 0);
+
+    // Draw grid.
+    var gridWidth = this.computeGridWidthForDisplay_();
+    var gridSpacing = this.getGridSpacing();
+    if (gridWidth > 0) {
+      var gridColor = this.getGridColor();
+      // Scale out before drawing the grid.
+      displayContext.scale(1 / z, 1 / z);
+
+      var drawOrClear;
+      if (gridColor === Constants.TRANSPARENT_COLOR) {
+        drawOrClear = displayContext.clearRect.bind(displayContext);
+      } else {
+        displayContext.fillStyle = gridColor;
+        drawOrClear = displayContext.fillRect.bind(displayContext);
       }
-      displayContext.drawImage(this.canvas, 0, 0);
+
+      // Draw or clear vertical lines.
+      for (var i = 1 ; i < frame.getWidth() ; i++) {
+        if (i % gridSpacing == 0) {
+          drawOrClear((i * z) - (gridWidth / 2), 0, gridWidth, h * z);
+        }
+      }
+      // Draw or clear horizontal lines.
+      for (var j = 1 ; j < frame.getHeight() ; j++) {
+        if (j % gridSpacing == 0) {
+          drawOrClear(0, (j * z) - (gridWidth / 2), w * z, gridWidth);
+        }
+      }
     }
 
     displayContext.restore();
@@ -293,7 +363,9 @@
    * differentiate those additional frames from the main frame.
    */
   ns.FrameRenderer.prototype.drawTiledFrames_ = function (context, image, w, h, z) {
-    context.fillStyle = Constants.SEAMLESS_MODE_OVERLAY_COLOR;
+    var opacity = pskl.UserSettings.get('SEAMLESS_OPACITY');
+    opacity = pskl.utils.Math.minmax(opacity, 0, 1);
+    context.fillStyle = 'rgba(255, 255, 255, ' + opacity + ')';
     [[0, -1], [0, 1], [-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]].forEach(function (d) {
       context.drawImage(image, d[0] * w * z, d[1] * h * z);
       context.fillRect(d[0] * w * z, d[1] * h * z, w * z, h * z);

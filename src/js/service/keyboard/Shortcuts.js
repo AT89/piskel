@@ -11,7 +11,7 @@
      * Or really custom shortcuts such as the 1-9 for color palette shorctus
      */
     FORBIDDEN_KEYS : ['1', '2', '3', '4', '5', '6', '7', '8', '9', '?', 'shift+?',
-      'del', 'back', 'ctrl+Y', 'ctrl+shift+Z'],
+      'DEL', 'BACK', 'ENTER', 'ctrl+Y', 'ctrl+shift+Z'],
 
     /**
      * Syntax : createShortcut(id, description, default key(s))
@@ -38,7 +38,8 @@
       CUT : createShortcut('selection-cut', 'Cut selection', 'ctrl+X'),
       COPY : createShortcut('selection-copy', 'Copy selection', 'ctrl+C'),
       PASTE : createShortcut('selection-paste', 'Paste selection', 'ctrl+V'),
-      DELETE : createShortcut('selection-delete', 'Delete selection', ['del', 'back'])
+      DELETE : createShortcut('selection-delete', 'Delete selection', ['DEL', 'BACK']),
+      COMMIT : createShortcut('selection-commit', 'Commit selection', ['ENTER'])
     },
 
     MISC : {
@@ -54,10 +55,17 @@
       NEW_FRAME : createShortcut('new-frame', 'Create new empty frame', 'N'),
       DUPLICATE_FRAME : createShortcut('duplicate-frame', 'Duplicate selected frame', 'shift+N'),
       CHEATSHEET : createShortcut('cheatsheet', 'Open the keyboard shortcut cheatsheet', ['?', 'shift+?']),
-      X1_PREVIEW : createShortcut('x1-preview', 'Toggle original size preview', 'alt+1'),
+      X1_PREVIEW : createShortcut('x1-preview', 'Select original size preview', 'alt+1'),
+      BEST_PREVIEW : createShortcut('best-preview', 'Select best size preview', 'alt+2'),
+      FULL_PREVIEW : createShortcut('full-preview', 'Select full size preview', 'alt+3'),
       ONION_SKIN : createShortcut('onion-skin', 'Toggle onion skin', 'alt+O'),
       LAYER_PREVIEW : createShortcut('layer-preview', 'Toggle layer preview', 'alt+L'),
-      CLOSE_POPUP : createShortcut('close-popup', 'Close an opened popup', 'ESC')
+      MERGE_ANIMATION : createShortcut('import-animation', 'Open merge animation popup', 'ctrl+shift+M'),
+      CLOSE_POPUP : createShortcut('close-popup', 'Close an opened popup', 'ESC'),
+      OFFSET_UP : createShortcut('move-up', 'Move viewport up', 'shift+up'),
+      OFFSET_RIGHT : createShortcut('move-right', 'Move viewport right', 'shift+right'),
+      OFFSET_DOWN : createShortcut('move-down', 'Move viewport down', 'shift+down'),
+      OFFSET_LEFT : createShortcut('move-left', 'Move viewport left', 'shift+left'),
     },
 
     STORAGE : {
@@ -74,6 +82,10 @@
       NEXT_COLOR : createShortcut('next-color', 'Select the next color in the current palette', '>'),
       SELECT_COLOR : createShortcut('select-color', 'Select a palette color in the current palette',
         '123456789'.split(''), '1 to 9')
+    },
+
+    DEBUG : {
+      RELOAD_STYLES : createShortcut('move-left', 'Move viewport left', 'ctrl+alt+R'),
     },
 
     CATEGORIES : ['TOOL', 'SELECTION', 'MISC', 'STORAGE', 'COLOR']

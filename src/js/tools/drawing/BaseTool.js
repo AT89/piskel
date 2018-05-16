@@ -48,7 +48,7 @@
       overlay.clear();
     }
 
-    var frameColor = frame.getPixel(col, row);
+    var frameColor = pskl.utils.intToColor(frame.getPixel(col, row));
     var highlightColor = this.getHighlightColor_(frameColor);
     var size = this.supportsDynamicPenSize() ? pskl.app.penSizeService.getPenSize() : 1;
     pskl.PixelUtils.resizePixel(col, row, size).forEach(function (point) {
@@ -82,4 +82,12 @@
 
   ns.BaseTool.prototype.releaseToolAt = function (col, row, frame, overlay, event) {};
 
+  /**
+   * Does the tool support the ALT modifier. To be overridden by subclasses.
+   *
+   * @return {Boolean} true if the tool supports ALT.
+   */
+  ns.BaseTool.prototype.supportsAlt = function () {
+    return false;
+  };
 })();

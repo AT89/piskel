@@ -2,32 +2,11 @@
   var ns = $.namespace('pskl.utils');
 
   ns.LayerUtils = {
-    /**
-     * Create a Frame array from an Image object.
-     * Transparent pixels will either be converted to completely opaque or completely transparent pixels.
-     * TODO : move to FrameUtils
-     *
-     * @param  {Image} image source image
-     * @param  {Number} frameCount number of frames in the spritesheet
-     * @return {Array<Frame>}
-     */
-    createFramesFromSpritesheet : function (image, frameCount) {
-      var width = image.width;
-      var height = image.height;
-      var frameWidth = width / frameCount;
-
-      var canvas = pskl.utils.CanvasUtils.createCanvas(frameWidth, height);
-      var context = canvas.getContext('2d');
-
-      // Draw the zoomed-up pixels to a different canvas context
-      var frames = [];
-      for (var i = 0 ; i < frameCount ; i++) {
-        context.clearRect(0, 0 , frameWidth, height);
-        context.drawImage(image, frameWidth * i, 0, frameWidth, height, 0, 0, frameWidth, height);
-        var frame = pskl.utils.FrameUtils.createFromImage(canvas);
-        frames.push(frame);
-      }
-      return frames;
+    clone : function (layer) {
+      var clonedFrames = layer.getFrames().map(function (frame) {
+        return frame.clone();
+      });
+      return pskl.model.Layer.fromFrames(layer.getName() + ' (clone)', clonedFrames);
     },
 
     mergeLayers : function (layerA, layerB) {

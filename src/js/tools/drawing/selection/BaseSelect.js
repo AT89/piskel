@@ -8,7 +8,6 @@
 
   ns.BaseSelect = function() {
     this.secondaryToolId = pskl.tools.drawing.Move.TOOL_ID;
-    this.bodyRoot = $('body');
 
     // Select's first point coordinates (set in applyToolAt)
     this.startCol = null;
@@ -18,12 +17,16 @@
     this.lastMoveRow = null;
 
     this.selection = null;
+    this.hasSelection = false;
 
     this.tooltipDescriptors = [
       {description : 'Drag the selection to move it. You may switch to other layers and frames.'},
       {key : 'ctrl+c', description : 'Copy the selected area'},
-      {key : 'ctrl+v', description : 'Paste the copied area'}
+      {key : 'ctrl+v', description : 'Paste the copied area'},
+      {key : 'shift', description : 'Hold to move the content'}
     ];
+
+    $.subscribe(Events.SELECTION_DISMISSED, this.onSelectionDismissed_.bind(this));
   };
 
   pskl.utils.inherit(ns.BaseSelect, pskl.tools.drawing.BaseTool);
@@ -48,6 +51,11 @@
       this.onSelectStart_(col, row, frame, overlay);
     } else {
       this.mode = 'moveSelection';
+      if (event.shiftKey && !this.isMovingContent_) {
+        this.isMovingContent_ = true;
+        $.publish(Events.CLIPBOARD_CUT);
+        this.drawSelectionOnOverlay_(overlay);
+      }
       this.onSelectionMoveStart_(col, row, frame, overlay);
     }
   };
@@ -83,13 +91,17 @@
     if (overlay.containsPixel(col, row)) {
       if (this.isInSelection(col, row)) {
         // We're hovering the selection, show the move tool:
-        this.bodyRoot.addClass(this.secondaryToolId);
-        this.bodyRoot.removeClass(this.toolId);
+        document.body.classList.add(this.secondaryToolId);
+        document.body.classList.remove(this.toolId);
       } else {
         // We're not hovering the selection, show create selection tool:
-        this.bodyRoot.addClass(this.toolId);
-        this.bodyRoot.removeClass(this.secondaryToolId);
+        document.body.classList.add(this.toolId);
+        document.body.classList.remove(this.secondaryToolId);
       }
+    }
+
+    if (!this.hasSelection) {
+      pskl.tools.drawing.BaseTool.prototype.moveUnactiveToolAt.apply(this, arguments);
     }
   };
 
@@ -99,8 +111,27 @@
     });
   };
 
-  ns.BaseSelect.prototype.hideHighlightedPixel = function() {
-    // there is no highlighted pixel for selection tools, do nothing
+  /**
+   * Protected method, should be called when the selection is committed,
+   * typically by clicking outside of the selected area.
+   */
+  ns.BaseSelect.prototype.commitSelection = function () {
+    if (this.isMovingContent_) {
+      $.publish(Events.CLIPBOARD_PASTE);
+      this.isMovingContent_ = false;
+    }
+
+    // Clean previous selection:
+    $.publish(Events.SELECTION_DISMISSED);
+  };
+
+  /**
+   * Protected method, should be called when the selection is dismissed.
+   */
+  ns.BaseSelect.prototype.onSelectionDismissed_ = function () {
+    var overlay = pskl.app.drawingController.overlayFrame;
+    overlay.clear();
+    this.hasSelection = false;
   };
 
   /**

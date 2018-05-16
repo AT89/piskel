@@ -27,8 +27,13 @@
     return this.delegateSave_(pskl.app.galleryStorageService, piskel);
   };
 
+  // @deprecated, use saveToIndexedDb unless indexedDb is not available.
   ns.StorageService.prototype.saveToLocalStorage = function (piskel) {
     return this.delegateSave_(pskl.app.localStorageService, piskel);
+  };
+
+  ns.StorageService.prototype.saveToIndexedDb = function (piskel) {
+    return this.delegateSave_(pskl.app.indexedDbStorageService, piskel);
   };
 
   ns.StorageService.prototype.saveToFileDownload = function (piskel) {
@@ -67,7 +72,7 @@
       // wrap in timeout in order to start saving only after event.preventDefault
       // has been done
       window.setTimeout(function () {
-        this.saveToLocalStorage(this.piskelController.getPiskel());
+        this.saveToIndexedDb(this.piskelController.getPiskel());
       }.bind(this), 0);
     }
   };
@@ -80,7 +85,10 @@
   };
 
   ns.StorageService.prototype.onSaveSuccess_ = function () {
-    $.publish(Events.SHOW_NOTIFICATION, [{'content': 'Successfully saved !'}]);
+    $.publish(Events.SHOW_NOTIFICATION, [{
+      content : 'Successfully saved !',
+      hideDelay : 3000
+    }]);
     $.publish(Events.PISKEL_SAVED);
     this.afterSaving_();
   };
@@ -90,14 +98,16 @@
     if (errorMessage) {
       errorText += ' : ' + errorMessage;
     }
-    $.publish(Events.SHOW_NOTIFICATION, [{'content': errorText}]);
+    $.publish(Events.SHOW_NOTIFICATION, [{
+      content : errorText,
+      hideDelay : 10000
+    }]);
     this.afterSaving_();
     return Q.reject(errorMessage);
   };
 
   ns.StorageService.prototype.afterSaving_ = function () {
     $.publish(Events.AFTER_SAVING_PISKEL);
-    window.setTimeout($.publish.bind($, Events.HIDE_NOTIFICATION), 5000);
   };
 
   ns.StorageService.prototype.setSavingFlag_ = function (savingFlag) {

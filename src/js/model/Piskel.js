@@ -8,22 +8,14 @@
    * @param {String} name
    * @param {String} description
    */
-  ns.Piskel = function (width, height, descriptor) {
+  ns.Piskel = function (width, height, fps, descriptor) {
     if (width && height && descriptor) {
-      /** @type {Array} */
       this.layers = [];
-
-      /** @type {Number} */
       this.width = width;
-
-      /** @type {Number} */
       this.height = height;
-
       this.descriptor = descriptor;
-
-      /** @type {String} */
       this.savePath = null;
-
+      this.fps = fps;
     } else {
       throw 'Missing arguments in Piskel constructor : ' + Array.prototype.join.call(arguments, ',');
     }
@@ -35,11 +27,11 @@
    * @param  {Array<pskl.model.Layer>} layers
    * @return {pskl.model.Piskel}
    */
-  ns.Piskel.fromLayers = function (layers, descriptor) {
+  ns.Piskel.fromLayers = function (layers, fps, descriptor) {
     var piskel = null;
     if (layers.length > 0 && layers[0].size() > 0) {
       var sampleFrame = layers[0].getFrameAt(0);
-      piskel = new pskl.model.Piskel(sampleFrame.getWidth(), sampleFrame.getHeight(), descriptor);
+      piskel = new pskl.model.Piskel(sampleFrame.getWidth(), sampleFrame.getHeight(), fps, descriptor);
       layers.forEach(piskel.addLayer.bind(piskel));
     } else {
       throw 'Piskel.fromLayers expects array of non empty pskl.model.Layer as first argument';
@@ -59,6 +51,10 @@
     return this.width;
   };
 
+  ns.Piskel.prototype.getFPS = function () {
+    return this.fps;
+  };
+
   ns.Piskel.prototype.getLayers = function () {
     return this.layers;
   };
@@ -73,6 +69,10 @@
     });
   };
 
+  ns.Piskel.prototype.getFrameCount = function () {
+    return this.getLayerAt(0).size();
+  };
+
   ns.Piskel.prototype.addLayer = function (layer) {
     this.layers.push(layer);
   };
@@ -81,20 +81,28 @@
     this.layers.splice(index, 0, layer);
   };
 
-  ns.Piskel.prototype.moveLayerUp = function (layer) {
+  ns.Piskel.prototype.moveLayerUp = function (layer, toTop) {
     var index = this.layers.indexOf(layer);
-    if (index > -1 && index < this.layers.length - 1) {
-      this.layers[index] = this.layers[index + 1];
-      this.layers[index + 1] = layer;
-    }
+    var toIndex = toTop ? this.layers.length - 1 : index + 1;
+    this.moveLayer_(index, toIndex);
   };
 
-  ns.Piskel.prototype.moveLayerDown = function (layer) {
+  ns.Piskel.prototype.moveLayerDown = function (layer, toBottom) {
     var index = this.layers.indexOf(layer);
-    if (index > 0) {
-      this.layers[index] = this.layers[index - 1];
-      this.layers[index - 1] = layer;
+    var toIndex = toBottom ? 0 : index - 1;
+    this.moveLayer_(index, toIndex);
+  };
+
+  /**
+   * Move the layer at the provided index to the provided toIndex.
+   */
+  ns.Piskel.prototype.moveLayer_ = function (fromIndex, toIndex) {
+    if (fromIndex == -1 || toIndex == -1 || fromIndex == toIndex) {
+      return;
     }
+    toIndex = pskl.utils.Math.minmax(toIndex, 0, this.layers.length - 1);
+    var layer = this.layers.splice(fromIndex, 1)[0];
+    this.layers.splice(toIndex, 0, layer);
   };
 
   ns.Piskel.prototype.removeLayer = function (layer) {

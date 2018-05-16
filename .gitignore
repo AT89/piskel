@@ -1,4 +1,4 @@
-# mac artefacts
+# mac artifacts
 *.DS_Store
 
 # nodejs local installs
@@ -15,9 +15,11 @@ cache
 # netbeans project folder
 nbproject
 
+# vscode workspace folder
+.vscode
+
 # git stackdumps
 *.stackdump
-
 
 # diffs
 diff.txt
@@ -28,6 +30,7 @@ build/closure/closure_compiled_binary.js
 
 # spriting artifacts
 src/img/icons.png
+src/img/icons@2x.png
 src/css/icons.css
 
 # plato report directory

@@ -15,9 +15,9 @@
         } else if (axis === ns.TransformUtils.HORIZONTAL) {
           y = h - y - 1;
         }
-        frame.pixels[x][y] = color;
+        frame.setPixel(x, y, color);
       });
-      frame.version++;
+
       return frame;
     },
 
@@ -55,40 +55,43 @@
         x = x - xDelta;
         y = y - yDelta;
         if (clone.containsPixel(x, y)) {
-          frame.pixels[_x][_y] = clone.getPixel(x, y);
+          frame.setPixel(_x, _y, clone.getPixel(x, y));
         } else {
-          frame.pixels[_x][_y] = Constants.TRANSPARENT_COLOR;
+          frame.setPixel(_x, _y, Constants.TRANSPARENT_COLOR);
         }
       });
-      frame.version++;
+
       return frame;
     },
 
-    center : function(frame) {
-      // Figure out the boundary
-      var minx = frame.width;
-      var miny = frame.height;
+    getBoundaries : function(frames) {
+      var minx = +Infinity;
+      var miny = +Infinity;
       var maxx = 0;
       var maxy = 0;
-      frame.forEachPixel(function (color, x, y) {
-        if (color !== Constants.TRANSPARENT_COLOR) {
-          minx = Math.min(minx, x);
-          maxx = Math.max(maxx, x);
-          miny = Math.min(miny, y);
-          maxy = Math.max(maxy, y);
-        }
+
+      var transparentColorInt = pskl.utils.colorToInt(Constants.TRANSPARENT_COLOR);
+
+      frames.forEach(function (frame) {
+        frame.forEachPixel(function (color, x, y) {
+          if (color !== transparentColorInt) {
+            minx = Math.min(minx, x);
+            maxx = Math.max(maxx, x);
+            miny = Math.min(miny, y);
+            maxy = Math.max(maxy, y);
+          }
+        });
       });
 
-      // Calculate how much to move the pixels
-      var bw = (maxx - minx + 1) / 2;
-      var bh = (maxy - miny + 1) / 2;
-      var fw = frame.width / 2;
-      var fh = frame.height / 2;
+      return {
+        minx: minx,
+        maxx: maxx,
+        miny: miny,
+        maxy: maxy,
+      };
+    },
 
-      var dx = Math.floor(fw - bw - minx);
-      var dy = Math.floor(fh - bh - miny);
-
-      // Actually move the pixels
+    moveFramePixels : function (frame, dx, dy) {
       var clone = frame.clone();
       frame.forEachPixel(function(color, x, y) {
         var _x = x;
@@ -98,12 +101,29 @@
         y -= dy;
 
         if (clone.containsPixel(x, y)) {
-          frame.pixels[_x][_y] = clone.getPixel(x, y);
+          frame.setPixel(_x, _y, clone.getPixel(x, y));
         } else {
-          frame.pixels[_x][_y] = Constants.TRANSPARENT_COLOR;
+          frame.setPixel(_x, _y, Constants.TRANSPARENT_COLOR);
         }
       });
-      frame.version++;
+    },
+
+    center : function(frame) {
+      // Figure out the boundary
+      var boundaries = ns.TransformUtils.getBoundaries([frame]);
+
+      // Calculate how much to move the pixels
+      var bw = (boundaries.maxx - boundaries.minx + 1) / 2;
+      var bh = (boundaries.maxy - boundaries.miny + 1) / 2;
+      var fw = frame.width / 2;
+      var fh = frame.height / 2;
+
+      var dx = Math.floor(fw - bw - boundaries.minx);
+      var dy = Math.floor(fh - bh - boundaries.miny);
+
+      // Actually move the pixels
+
+      ns.TransformUtils.moveFramePixels(frame, dx, dy);
       return frame;
     }
   };

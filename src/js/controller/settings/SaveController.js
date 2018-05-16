@@ -34,7 +34,7 @@
     this.saveDesktopAsNewButton = document.querySelector('#save-desktop-as-new-button');
     this.saveFileDownloadButton = document.querySelector('#save-file-download-button');
 
-    this.safeAddEventListener_(this.saveLocalStorageButton, 'click', this.saveToLocalStorage_);
+    this.safeAddEventListener_(this.saveLocalStorageButton, 'click', this.saveToIndexedDb_);
     this.safeAddEventListener_(this.saveGalleryButton, 'click', this.saveToGallery_);
     this.safeAddEventListener_(this.saveDesktopButton, 'click', this.saveToDesktop_);
     this.safeAddEventListener_(this.saveDesktopAsNewButton, 'click', this.saveToDesktopAsNew_);
@@ -46,13 +46,23 @@
       this.disableSaveButtons_();
     }
 
+    this.updateSaveToGalleryMessage_();
+
     $.subscribe(Events.BEFORE_SAVING_PISKEL, this.disableSaveButtons_.bind(this));
     $.subscribe(Events.AFTER_SAVING_PISKEL, this.enableSaveButtons_.bind(this));
   };
 
+  ns.SaveController.prototype.updateSaveToGalleryMessage_ = function (spritesheetSize) {
+    var saveToGalleryStatus = document.querySelector('.save-online-status');
+    if (saveToGalleryStatus && pskl.app.performanceReportService.hasProblem()) {
+      var warningPartial = pskl.utils.Template.get('save-gallery-warning-partial');
+      saveToGalleryStatus.innerHTML = warningPartial;
+    }
+  };
+
   ns.SaveController.prototype.insertSavePartials_ = function () {
     this.getPartials_().forEach(function (partial) {
-      pskl.utils.Template.insert(this.saveForm, 'beforeend', partial);
+      this.saveForm.insertAdjacentHTML('beforeend', pskl.utils.Template.get(partial));
     }.bind(this));
   };
 
@@ -89,7 +99,7 @@
     if (pskl.app.isLoggedIn()) {
       this.saveToGallery_();
     } else {
-      this.saveToLocalStorage_();
+      this.saveToIndexedDb_();
     }
   };
 
@@ -101,8 +111,8 @@
     this.saveTo_('saveToGallery', false);
   };
 
-  ns.SaveController.prototype.saveToLocalStorage_ = function () {
-    this.saveTo_('saveToLocalStorage', false);
+  ns.SaveController.prototype.saveToIndexedDb_ = function () {
+    this.saveTo_('saveToIndexedDb', false);
   };
 
   ns.SaveController.prototype.saveToDesktop_ = function () {

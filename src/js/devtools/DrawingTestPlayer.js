@@ -8,6 +8,8 @@
     this.step = step || this.initialState.step || ns.DrawingTestPlayer.DEFAULT_STEP;
     this.callbacks = [];
     this.shim = null;
+    this.performance = 0;
+
   };
 
   ns.DrawingTestPlayer.DEFAULT_STEP = 50;
@@ -15,12 +17,22 @@
   ns.DrawingTestPlayer.prototype.start = function () {
     this.setupInitialState_();
     this.createMouseShim_();
-    this.regenerateReferencePng().then(function () {
+
+    // Override the main drawing loop to record the time spent rendering.
+    this.loopBackup = pskl.app.drawingLoop.loop;
+    pskl.app.drawingLoop.loop = function () {
+      var before = window.performance.now();
+      this.loopBackup.call(pskl.app.drawingLoop);
+      this.performance += window.performance.now() - before;
+    }.bind(this);
+
+    this.regenerateReferencePng(function () {
       this.playEvent_(0);
     }.bind(this));
   };
 
   ns.DrawingTestPlayer.prototype.setupInitialState_ = function () {
+
     var size = this.initialState.size;
     var piskel = this.createPiskel_(size.width, size.height);
     pskl.app.piskelController.setPiskel(piskel);
@@ -28,14 +40,15 @@
     $.publish(Events.SELECT_PRIMARY_COLOR, [this.initialState.primaryColor]);
     $.publish(Events.SELECT_SECONDARY_COLOR, [this.initialState.secondaryColor]);
     $.publish(Events.SELECT_TOOL, [this.initialState.selectedTool]);
-    if (this.initialState.penSize) {
-      pskl.app.penSizeService.setPenSize(this.initialState.penSize);
-    }
+
+    // Old tests do not have penSize stored in initialState, fallback to 1.
+    var penSize = this.initialState.penSize || 1;
+    pskl.app.penSizeService.setPenSize(this.initialState.penSize);
   };
 
   ns.DrawingTestPlayer.prototype.createPiskel_ = function (width, height) {
     var descriptor = new pskl.model.piskel.Descriptor('TestPiskel', '');
-    var piskel = new pskl.model.Piskel(width, height, descriptor);
+    var piskel = new pskl.model.Piskel(width, height, 12, descriptor);
     var layer = new pskl.model.Layer('Layer 1');
     var frame = new pskl.model.Frame(width, height);
 
@@ -45,21 +58,13 @@
     return piskel;
   };
 
-  ns.DrawingTestPlayer.prototype.regenerateReferencePng = function () {
+  ns.DrawingTestPlayer.prototype.regenerateReferencePng = function (callback) {
     var image = new Image();
-    var then = function () {};
-
     image.onload = function () {
-      this.referencePng = pskl.utils.CanvasUtils.createFromImage(image).toDataURL();
-      then();
+      this.referenceCanvas = pskl.utils.CanvasUtils.createFromImage(image);
+      callback();
     }.bind(this);
     image.src = this.referencePng;
-
-    return {
-      then : function (cb) {
-        then = cb;
-      }
-    };
   };
 
   /**
@@ -84,11 +89,13 @@
     this.timer = window.setTimeout(function () {
       var recordEvent = this.events[index];
 
+      // All events have already been replayed, finish the test.
       if (!recordEvent) {
         this.onTestEnd_();
         return;
       }
 
+      var before = window.performance.now();
       if (recordEvent.type === 'mouse-event') {
         this.playMouseEvent_(recordEvent);
       } else if (recordEvent.type === 'keyboard-event') {
@@ -103,7 +110,12 @@
         this.playTransformToolEvent_(recordEvent);
       } else if (recordEvent.type === 'instrumented-event') {
         this.playInstrumentedEvent_(recordEvent);
+      } else if (recordEvent.type === 'clipboard-event') {
+        this.playClipboardEvent_(recordEvent);
       }
+
+      // Record the time spent replaying the event
+      this.performance += window.performance.now() - before;
 
       this.playEvent_(index + 1);
     }.bind(this), this.step);
@@ -129,8 +141,8 @@
 
   ns.DrawingTestPlayer.prototype.playKeyboardEvent_ = function (recordEvent) {
     var event = recordEvent.event;
-    if (pskl.utils.UserAgent.isMac && event.ctrlKey) {
-      event.metaKey = true;
+    if (pskl.utils.UserAgent.isMac) {
+      event.metaKey = event.ctrlKey;
     }
 
     event.preventDefault = function () {};
@@ -161,18 +173,45 @@
     pskl.app.piskelController[recordEvent.methodName].apply(pskl.app.piskelController, recordEvent.args);
   };
 
+  ns.DrawingTestPlayer.prototype.playClipboardEvent_ = function (recordEvent) {
+    $.publish(recordEvent.event.type, {
+      preventDefault: function () {},
+      clipboardData: {
+        items: [],
+        setData: function () {}
+      }
+    });
+  };
+
   ns.DrawingTestPlayer.prototype.onTestEnd_ = function () {
     this.removeMouseShim_();
+    // Restore the original drawing loop.
+    pskl.app.drawingLoop.loop = this.loopBackup;
 
+    // Retrieve the imageData corresponding to the spritesheet created by the test.
     var renderer = new pskl.rendering.PiskelRenderer(pskl.app.piskelController);
-    var png = renderer.renderAsCanvas().toDataURL();
+    var canvas = renderer.renderAsCanvas();
+    var testData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
 
-    var success = png === this.referencePng;
+    // Retrieve the reference imageData corresponding to the reference data-url png stored for this test.
+    var refCanvas = this.referenceCanvas;
+    this.referenceData = refCanvas.getContext('2d').getImageData(0, 0, refCanvas.width, refCanvas.height);
 
-    $.publish(Events.TEST_RECORD_END, [success, png, this.referencePng]);
+    // Compare the two imageData arrays.
+    var success = true;
+    for (var i = 0 ; i < this.referenceData.data.length ; i++) {
+      if (this.referenceData.data[i] != testData.data[i]) {
+        success = false;
+      }
+    }
+
+    $.publish(Events.TEST_RECORD_END, [success]);
     this.callbacks.forEach(function (callback) {
-      callback(success, png, this.referencePng);
-    });
+      callback({
+        success: success,
+        performance: this.performance
+      });
+    }.bind(this));
   };
 
   ns.DrawingTestPlayer.prototype.addEndTestCallback = function (callback) {

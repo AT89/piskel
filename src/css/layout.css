@@ -3,7 +3,7 @@
  */
 
 .main-wrapper {
-  position: absolute;
+  position: fixed;
   top: 5px;
   right: 0;
   bottom: 5px;
@@ -25,7 +25,8 @@
 .left-column {
   vertical-align: top;
   height: 100%;
-  margin-right: 7px;
+  padding-right: 7px;
+  flex-shrink: 0;
 }
 
 .main-column {
@@ -37,12 +38,14 @@
   box-sizing: border-box;
   vertical-align: top;
   height: 100%;
+  flex-shrink: 0;
 
   display: flex;
   flex-direction: column;
   position: relative;
 
-  margin-left: 10px;
+  /* Keep in sync with Constants.RIGHT_COLUMN_PADDING_LEFT */
+  padding-left: 10px;
   /* Add some padding for the absolutely positioned .cursor-coordinates */
   padding-bottom: 20px;
 }
@@ -78,10 +81,16 @@
 }
 
 .cursor-coordinates {
-  color:#888;
-  font-size:12px;
-  font-weight:bold;
-  font-family:Courier;
+  color: var(--highlight-color);
+  font-size: 12px;
+  font-weight: bold;
+  font-family: monospace;
+}
+
+.cursor-coordinates .drawing-zoom {
+  position: absolute;
+  top: -20px;
+  left: 1px;
 }
 
 /**

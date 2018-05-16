@@ -2,13 +2,11 @@
 
   var ns = $.namespace('pskl.controller');
 
-  ns.DrawingController = function (piskelController, paletteController, container) {
+  ns.DrawingController = function (piskelController, container) {
     /**
      * @public
      */
     this.piskelController = piskelController;
-
-    this.paletteController = paletteController;
 
     this.dragHandler = new ns.drawing.DragHandler(this);
 
@@ -52,12 +50,12 @@
   ns.DrawingController.prototype.init = function () {
     this.initMouseBehavior();
 
-    $.subscribe(Events.TOOL_SELECTED, $.proxy(function(evt, toolBehavior) {
+    $.subscribe(Events.TOOL_SELECTED, (function(evt, toolBehavior) {
       this.currentToolBehavior = toolBehavior;
       this.overlayFrame.clear();
-    }, this));
+    }).bind(this));
 
-    $(window).resize($.proxy(this.startResizeTimer_, this));
+    window.addEventListener('resize', this.startResizeTimer_.bind(this));
 
     $.subscribe(Events.USER_SETTINGS_CHANGED, this.onUserSettingsChange_.bind(this));
     $.subscribe(Events.FRAME_SIZE_CHANGED, this.onFrameSizeChange_.bind(this));
@@ -66,6 +64,10 @@
     pskl.app.shortcutService.registerShortcut(shortcuts.MISC.RESET_ZOOM, this.resetZoom_.bind(this));
     pskl.app.shortcutService.registerShortcut(shortcuts.MISC.INCREASE_ZOOM, this.updateZoom_.bind(this, 1));
     pskl.app.shortcutService.registerShortcut(shortcuts.MISC.DECREASE_ZOOM, this.updateZoom_.bind(this, -1));
+    pskl.app.shortcutService.registerShortcut(shortcuts.MISC.OFFSET_UP, this.updateOffset_.bind(this, 'up'));
+    pskl.app.shortcutService.registerShortcut(shortcuts.MISC.OFFSET_RIGHT, this.updateOffset_.bind(this, 'right'));
+    pskl.app.shortcutService.registerShortcut(shortcuts.MISC.OFFSET_DOWN, this.updateOffset_.bind(this, 'down'));
+    pskl.app.shortcutService.registerShortcut(shortcuts.MISC.OFFSET_LEFT, this.updateOffset_.bind(this, 'left'));
 
     window.setTimeout(function () {
       this.afterWindowResize_();
@@ -74,13 +76,12 @@
   };
 
   ns.DrawingController.prototype.initMouseBehavior = function() {
-    var body = $('body');
-    this.container.mousedown($.proxy(this.onMousedown_, this));
+    this.container.addEventListener('mousedown', this.onMousedown_.bind(this));
 
     if (pskl.utils.UserAgent.isChrome || pskl.utils.UserAgent.isIE11) {
-      this.container.on('mousewheel', $.proxy(this.onMousewheel_, this));
+      this.container.addEventListener('mousewheel', this.onMousewheel_.bind(this));
     } else {
-      this.container.on('wheel', $.proxy(this.onMousewheel_, this));
+      this.container.addEventListener('wheel', this.onMousewheel_.bind(this));
     }
 
     window.addEventListener('mouseup', this.onMouseup_.bind(this));
@@ -91,22 +92,20 @@
     window.addEventListener('touchend', this.onTouchend_.bind(this));
 
     // Deactivate right click:
-    body.contextmenu(this.onCanvasContextMenu_);
-
+    document.body.addEventListener('contextmenu', this.onCanvasContextMenu_.bind(this));
   };
 
   ns.DrawingController.prototype.startResizeTimer_ = function () {
     if (this.resizeTimer) {
       window.clearInterval(this.resizeTimer);
     }
-    this.resizeTimer = window.setTimeout($.proxy(this.afterWindowResize_, this), 200);
+    this.resizeTimer = window.setTimeout(this.afterWindowResize_.bind(this), 200);
   };
 
   ns.DrawingController.prototype.afterWindowResize_ = function () {
     var initialWidth = this.compositeRenderer.getDisplaySize().width;
 
     this.compositeRenderer.setDisplaySize(this.getContainerWidth_(), this.getContainerHeight_());
-    this.centerColumnWrapperHorizontally_();
     var ratio = this.compositeRenderer.getDisplaySize().width / initialWidth;
     var newZoom = ratio * this.compositeRenderer.getZoom();
     this.compositeRenderer.setZoom(newZoom);
@@ -131,7 +130,6 @@
 
   ns.DrawingController.prototype.onFrameSizeChange_ = function () {
     this.compositeRenderer.setDisplaySize(this.getContainerWidth_(), this.getContainerHeight_());
-    this.centerColumnWrapperHorizontally_();
     this.compositeRenderer.setZoom(this.calculateZoom_());
     this.compositeRenderer.setOffset(0, 0);
     $.publish(Events.ZOOM_CHANGED);
@@ -165,6 +163,9 @@
 
     if (event.button === Constants.MIDDLE_BUTTON) {
       this.dragHandler.startDrag(event.clientX, event.clientY);
+    } else if (event.altKey && !this.currentToolBehavior.supportsAlt()) {
+      this.currentToolBehavior.hideHighlightedPixel(this.overlayFrame);
+      this.isPickingColor = true;
     } else {
       this.currentToolBehavior.hideHighlightedPixel(this.overlayFrame);
       $.publish(Events.TOOL_PRESSED);
@@ -212,6 +213,8 @@
     if (this.isClicked) {
       if (pskl.app.mouseStateService.isMiddleButtonPressed()) {
         this.dragHandler.updateDrag(x, y);
+      } else if (this.isPickingColor) {
+        // Nothing to do on mousemove when picking a color with ALT+click.
       } else {
         $.publish(Events.MOUSE_EVENT, [event, this]);
         this.currentToolBehavior.moveToolAt(
@@ -234,17 +237,18 @@
     $.publish(Events.CURSOR_MOVED, [coords.x, coords.y]);
   };
 
-  ns.DrawingController.prototype.onMousewheel_ = function (jQueryEvent) {
-    var evt = jQueryEvent.originalEvent;
+  ns.DrawingController.prototype.onMousewheel_ = function (evt) {
     // Ratio between wheelDeltaY (mousewheel event) and deltaY (wheel event) is -40
     var delta;
-    if (pskl.utils.UserAgent.isChrome) {
-      delta = evt.wheelDeltaY;
-    } else if (pskl.utils.UserAgent.isIE11) {
+    if (pskl.utils.UserAgent.isIE11) {
       delta = evt.wheelDelta;
     } else if (pskl.utils.UserAgent.isFirefox) {
       delta = -40 * evt.deltaY;
+    } else {
+      delta = evt.wheelDeltaY;
     }
+
+    delta = delta || 0;
     var modifier = (delta / 120);
 
     if (pskl.utils.UserAgent.isMac ? evt.metaKey : evt.ctrlKey) {
@@ -255,6 +259,29 @@
 
     var coords = this.getSpriteCoordinates(evt.clientX, evt.clientY);
     this.updateZoom_(modifier, coords);
+  };
+
+  /**
+   * Update the current viewport offset of 1 pixel in the provided direction.
+   * Direction can be one of 'up', 'right', 'down', 'left'.
+   * Callback for the OFFSET_${DIR} shortcuts.
+   */
+  ns.DrawingController.prototype.updateOffset_ = function (direction) {
+    var off = this.getOffset();
+    if (direction === 'up') {
+      off.y -= 1;
+    } else if (direction === 'right') {
+      off.x += 1;
+    } else if (direction === 'down') {
+      off.y += 1;
+    } else if (direction === 'left') {
+      off.x -= 1;
+    }
+
+    this.setOffset(
+      off.x,
+      off.y
+    );
   };
 
   /**
@@ -278,7 +305,7 @@
     var step = zoomMultiplier * this.getZoomStep_();
     this.setZoom_(this.renderer.getZoom() + step);
 
-    if (centerCoords) {
+    if (typeof centerCoords === 'object') {
       var xRatio = (centerCoords.x - off.x) / oldWidth;
       var yRatio = (centerCoords.y - off.y) / oldHeight;
       var newWidth = this.getContainerWidth_() / this.renderer.getZoom();
@@ -294,38 +321,75 @@
    * @private
    */
   ns.DrawingController.prototype.onMouseup_ = function (event) {
-    var frame = this.piskelController.getCurrentFrame();
+    if (!this.isClicked) {
+      return;
+    }
+
     var coords = this.getSpriteCoordinates(event.clientX, event.clientY);
     if (event.changedTouches && event.changedTouches[0]) {
       coords = this.getSpriteCoordinates(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
     }
-    if (this.isClicked) {
-      // A mouse button was clicked on the drawing canvas before this mouseup event,
-      // the user was probably drawing on the canvas.
-      // Note: The mousemove movement (and the mouseup) may end up outside
-      // of the drawing canvas.
 
-      this.isClicked = false;
+    // A mouse button was clicked on the drawing canvas before this mouseup event,
+    // the user was probably drawing on the canvas.
+    // Note: The mousemove movement (and the mouseup) may end up outside
+    // of the drawing canvas.
 
-      if (pskl.app.mouseStateService.isMiddleButtonPressed()) {
-        if (this.dragHandler.isDragging()) {
-          this.dragHandler.stopDrag();
-        } else if (frame.containsPixel(coords.x, coords.y)) {
-          $.publish(Events.SELECT_PRIMARY_COLOR, [frame.getPixel(coords.x, coords.y)]);
-        }
-      } else {
-        this.currentToolBehavior.releaseToolAt(
-          coords.x,
-          coords.y,
-          this.piskelController.getCurrentFrame(),
-          this.overlayFrame,
-          event
-        );
+    this.isClicked = false;
 
-        $.publish(Events.TOOL_RELEASED);
-      }
-      $.publish(Events.MOUSE_EVENT, [event, this]);
+    var isMiddleButton = pskl.app.mouseStateService.isMiddleButtonPressed();
+    var isMiddleClick = isMiddleButton && !this.dragHandler.isDragging();
+    var isMiddleDrag = isMiddleButton && this.dragHandler.isDragging();
+
+    if (this.isPickingColor || isMiddleClick) {
+      // Picking color after ALT+click or middle mouse button click.
+      this.pickColorAt_(coords);
+      this.isPickingColor = false;
+      // Flash the cursor to briefly show the colorpicker cursor.
+      this.flashColorPicker_();
+    } else if (isMiddleDrag) {
+      // Stop the drag handler after a middle button drag action.
+      this.dragHandler.stopDrag();
+    } else {
+      // Regular tool click, release the current tool.
+      this.currentToolBehavior.releaseToolAt(
+        coords.x,
+        coords.y,
+        this.piskelController.getCurrentFrame(),
+        this.overlayFrame,
+        event
+      );
+      $.publish(Events.TOOL_RELEASED);
     }
+
+    $.publish(Events.MOUSE_EVENT, [event, this]);
+  };
+
+  /**
+   * Send a COLOR selection event for the color contained at the provided coordinates.
+   * No-op if the coordinate is outside of the drawing canvas.
+   * @param  {Object} coords {x: Number, y: Number}
+   */
+  ns.DrawingController.prototype.pickColorAt_ = function (coords) {
+    var frame = this.piskelController.getCurrentFrame();
+    if (!frame.containsPixel(coords.x, coords.y)) {
+      return;
+    }
+
+    var color = pskl.utils.intToColor(frame.getPixel(coords.x, coords.y));
+    var isRightButton = pskl.app.mouseStateService.isRightButtonPressed();
+    var evt = isRightButton ? Events.SELECT_SECONDARY_COLOR : Events.SELECT_PRIMARY_COLOR;
+    $.publish(evt, [color]);
+  };
+
+  ns.DrawingController.prototype.flashColorPicker_ = function () {
+    document.body.classList.add('tool-colorpicker');
+    document.body.classList.remove(this.currentToolBehavior.toolId);
+    window.clearTimeout(this.flashColorPickerTimer);
+    this.flashColorPickerTimer = window.setTimeout(function () {
+      document.body.classList.remove('tool-colorpicker');
+      document.body.classList.add(this.currentToolBehavior.toolId);
+    }.bind(this), 200);
   };
 
   /**
@@ -346,7 +410,8 @@
    * @private
    */
   ns.DrawingController.prototype.onCanvasContextMenu_ = function (event) {
-    if ($(event.target).closest('#drawing-canvas-container').length) {
+    // closest() not really available everywhere yet, just skip if missing.
+    if (event.target.closest && event.target.closest('#drawing-canvas-container')) {
       // Deactivate right click on drawing canvas only.
       event.preventDefault();
       event.stopPropagation();
@@ -384,17 +449,21 @@
   };
 
   ns.DrawingController.prototype.getAvailableHeight_ = function () {
-    return $('#main-wrapper').height();
+    return document.querySelector('#main-wrapper').getBoundingClientRect().height;
+  };
+
+  ns.DrawingController.prototype.getSelectorWidth_ = function (selector) {
+    return document.querySelector(selector).getBoundingClientRect().width;
   };
 
   ns.DrawingController.prototype.getAvailableWidth_ = function () {
-    var leftSectionWidth = $('.left-column').outerWidth(true);
-    var rightSectionWidth = $('.right-column').outerWidth(true);
-    var toolsContainerWidth = $('#tool-section').outerWidth(true);
-    var settingsContainerWidth = $('#application-action-section').outerWidth(true);
+    var leftSectionWidth = this.getSelectorWidth_('.left-column');
+    var rightSectionWidth = this.getSelectorWidth_('.right-column');
+    var toolsContainerWidth = this.getSelectorWidth_('#tool-section');
+    var settingsContainerWidth = this.getSelectorWidth_('#application-action-section');
 
     var usedWidth = leftSectionWidth + rightSectionWidth + toolsContainerWidth + settingsContainerWidth;
-    var availableWidth = $('#main-wrapper').width() - usedWidth;
+    var availableWidth = this.getSelectorWidth_('#main-wrapper') - usedWidth;
 
     var comfortMargin = 10;
     return availableWidth - comfortMargin;
@@ -406,17 +475,6 @@
 
   ns.DrawingController.prototype.getContainerWidth_ = function () {
     return this.getAvailableWidth_();
-  };
-
-  /**
-   * @private
-   */
-  ns.DrawingController.prototype.centerColumnWrapperHorizontally_ = function() {
-    var containerHeight = this.getContainerHeight_();
-    var verticalGapInPixel = Math.floor(($('#main-wrapper').height() - containerHeight) / 2);
-    $('#column-wrapper').css({
-      'top': verticalGapInPixel + 'px'
-    });
   };
 
   ns.DrawingController.prototype.getRenderer = function () {

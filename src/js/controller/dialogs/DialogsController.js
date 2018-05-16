@@ -14,9 +14,21 @@
       template : 'templates/dialogs/browse-local.html',
       controller : ns.BrowseLocalController
     },
-    'import-image' : {
-      template : 'templates/dialogs/import-image.html',
-      controller : ns.ImportImageController
+    'import' : {
+      template : 'templates/dialogs/import.html',
+      controller : ns.importwizard.ImportWizard
+    },
+    'performance-info' : {
+      template : 'templates/dialogs/performance-info.html',
+      controller : ns.PerformanceInfoController
+    },
+    'unsupported-browser' : {
+      template : 'templates/dialogs/unsupported-browser.html',
+      controller : ns.UnsupportedBrowserController
+    },
+    'browse-backups' : {
+      template : 'templates/dialogs/browse-backups.html',
+      controller : ns.backups.BrowseBackups
     }
   };
 
@@ -30,7 +42,7 @@
     this.dialogContainer_ = document.getElementById('dialog-container');
     this.dialogWrapper_ = document.getElementById('dialog-container-wrapper');
 
-    $.subscribe(Events.DIALOG_DISPLAY, this.onDialogDisplayEvent_.bind(this));
+    $.subscribe(Events.DIALOG_SHOW, this.onDialogDisplayEvent_.bind(this));
     $.subscribe(Events.DIALOG_HIDE, this.hideDialog.bind(this));
 
     var createPaletteShortcut = pskl.service.keyboard.Shortcuts.COLOR.CREATE_PALETTE;
@@ -42,6 +54,7 @@
 
     // adding the .animated class here instead of in the markup to avoid an animation during app startup
     this.dialogWrapper_.classList.add('animated');
+    pskl.utils.Event.addEventListener(this.dialogWrapper_, 'click', this.onWrapperClicked_, this);
   };
 
   ns.DialogsController.prototype.onCreatePaletteShortcut_ = function () {
@@ -67,6 +80,12 @@
 
   ns.DialogsController.prototype.onDialogDisplayEvent_ = function (evt, args) {
     this.showDialog(args.dialogId, args.initArgs);
+  };
+
+  ns.DialogsController.prototype.onWrapperClicked_ = function (evt) {
+    if (evt.target === this.dialogWrapper_) {
+      this.hideDialog();
+    }
   };
 
   ns.DialogsController.prototype.showDialog = function (dialogId, initArgs) {
